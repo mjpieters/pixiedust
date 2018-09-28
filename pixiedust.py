@@ -125,7 +125,7 @@ class PixieDust:
     # register handling
     def __getitem__(self, register, _b=str.maketrans(".+", "01")):
         assert len(register) == 2
-        if register not in {'*.', '*+', '.*'}:
+        if register not in {"*.", "*+", ".*"}:
             return self.registers.get(register, 0)
         if register == "*.":
             return self.instructions[self["**"]]
@@ -141,7 +141,7 @@ class PixieDust:
     def __setitem__(self, register, value):
         assert len(register) == 2
         value = value & 0xffffffff
-        if register not in {'*.', '*+', '.*'}:
+        if register not in {"*.", "*+", ".*"}:
             self.registers[register] = value
             return
         if register == "*.":
