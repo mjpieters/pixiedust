@@ -112,6 +112,8 @@ class PixieDust:
         self.instructions = []
         self.pos = 0
         self.labels = {}
+        # used by pre-pass validation
+        self.labels_used = set()
 
     # program execution
     def execute(self, dust):
@@ -246,8 +248,13 @@ class PixieDust:
     @opcode("+.")
     def op_set_label(self):
         """+. L defines a program label; L can be any number of characters."""
-        L = "".join(self.tokens)
-        self.labels[L] = self.pos
+        # Label is set in the pre-pass phase
+
+    @op_set_label.validator
+    def op_set_label(self):
+        """Set the label during pre-pass"""
+        label = "".join(self.tokens)
+        self.labels[label] = self.pos
 
     @opcode("+*")
     def op_jump_label(self, _t={"*": operator.truth, ".": operator.not_, "+": str}):
