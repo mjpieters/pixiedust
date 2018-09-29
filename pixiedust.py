@@ -54,7 +54,7 @@ class Opcodes(dict):
         return super().__getitem__(opcode)()
 
 
-class Memory:
+class SQLiteMemory:
     """31-bit addressable memory for PixieDust programs
 
     Memory cells are 4-byte words, containing signed integers.
@@ -95,7 +95,7 @@ class PixieDust:
 
     def __init__(self, stdout=sys.stdout, stdin=sys.stdin):
         self.registers = {}
-        self.memory = Memory()
+        self.memory = SQLiteMemory()
         self.stdout = stdout
         self.stdin = stdin
         self.instructions = []
