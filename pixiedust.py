@@ -237,7 +237,7 @@ class PixieDust:
         self.labels[L] = self.pos
 
     @opcode("+*")
-    def op_set_label(self, _t={"*": operator.truth, ".": operator.not_, "+": str}):
+    def op_jump_label(self, _t={"*": operator.truth, ".": operator.not_, "+": str}):
         """+* T L jumps to label L based on the condition T. 
 
         T can be 
