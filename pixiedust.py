@@ -126,7 +126,7 @@ class PixieDust:
         if register not in {"*.", "*+", ".*"}:
             return self.registers.get(register, 0)
         if register == "*.":
-            return self.instructions[self["**"]]
+            return self.memory[self["**"]]
         elif register == "*+":
             return self.stdin.read(1)
         elif register == ".*":
@@ -144,7 +144,7 @@ class PixieDust:
             self.registers[register] = value
             return
         if register == "*.":
-            self.instructions[self["**"]] = value
+            self.memory[self["**"]] = value
         elif register == "*+":
             self.stdout.write(value)
         elif register == ".*":
