@@ -100,6 +100,10 @@ class SQLiteMemory:
         ).fetchone()[0]
 
 
+# mapping pixiedust characters to bits for the .* literal syntax
+_dustbin_map = str.maketrans(".+", "01")
+
+
 class PixieDust:
     validators = Opcodes()
     opcodes = Opcodes()
@@ -128,20 +132,20 @@ class PixieDust:
             if illegal(instruction):
                 raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
             self.tokens = iter(tokenizer(instruction))
-            self.next = partial(next, self.tokens)
-            self.validators[self.next()]
+            self.next_token = partial(next, self.tokens)
+            self.validators[self.next_token()]
 
     def execute_next(self):
         instruction = self.instructions[self.pos]
         self.tokens = iter(tokenizer(instruction))
-        self.next = partial(next, self.tokens)
-        self.opcodes[self.next()]
+        self.next_token = partial(next, self.tokens)
+        self.opcodes[self.next_token()]
         if next(self.tokens, None) is not None:
             raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
         self.pos += 1
 
     # register handling
-    def __getitem__(self, register, _b=str.maketrans(".+", "01")):
+    def __getitem__(self, register, _b=_dustbin_map):
         assert len(register) == 2
         if register not in {"*.", "*+", ".*"}:
             return self.registers.get(register, 0)
@@ -172,7 +176,7 @@ class PixieDust:
             raise SyntaxError(f"No such register: .*, on line {self.pos + 1}")
 
     def expression(self):
-        return self[self.next() + self.next()]
+        return self[self.next_token() + self.next_token()]
 
     # opcode implementation
 
@@ -185,7 +189,7 @@ class PixieDust:
         X and Y are expressions.
         """
         # fetch (prefix of) O and delegate
-        self.opcodes["*" + self.next()]
+        self.opcodes["*" + self.next_token()]
 
     @opcode("*.")
     def op_math_copy(self):
@@ -194,56 +198,61 @@ class PixieDust:
         For a copy operation, Y should be omitted.
 
         """
-        R = self.next() + self.next()
-        X = self.expression()
-        self[R] = X
+        register = self.next_token() + self.next_token()
+        x = self.expression()
+        self[register] = x
 
     @opcode("*+")
-    def op_math_add_sub(self, _o={"+": operator.add, ".": operator.sub}):
+    def op_math_add_sub(self, _o={"+": operator.add, ".": operator.sub}):  # noqa B006
         """* O: ++ for addition, +. for subtraction"""
         try:
-            O = _o[self.next()]
+            oper = _o[self.next_token()]
         except KeyError:
             # *+* is reserved for future use.
-            raise SyntaxError(f'No such opcode: *+*, on line {self.pos + 1}')
-        R = self.next() + self.next()
-        X = self.expression()
-        Y = self.expression()
-        self[R] = O(X, Y)
+            raise SyntaxError(f"No such opcode: *+*, on line {self.pos + 1}")
+        register = self.next_token() + self.next_token()
+        x = self.expression()
+        y = self.expression()
+        self[register] = oper(x, y)
 
     @opcode("**")
     def op_math_mul_div_mod(
-        self, _o={"*": operator.mul, ".": operator.floordiv, "+": operator.mod}
+        self,
+        _o={"*": operator.mul, ".": operator.floordiv, "+": operator.mod},  # noqa B006
     ):
         """* O: ** for multiplication, *. for division, *+ for modulo"""
-        O = _o[self.next()]
-        R = self.next() + self.next()
-        X = self.expression()
-        Y = self.expression()
-        self[R] = O(X, Y)
+        oper = _o[self.next_token()]
+        register = self.next_token() + self.next_token()
+        x = self.expression()
+        y = self.expression()
+        self[register] = oper(x, y)
 
     @opcode(".")
-    def op_comp(self, _c={"*": operator.eq, "+": operator.lt, ".": operator.gt}):
-        """. C X Y performs the comparison specified by C and stores it with 0/1 in the .. register
+    def op_comp(
+        self, _c={"*": operator.eq, "+": operator.lt, ".": operator.gt}  # noqa B006
+    ):
+        """. C X Y performs the comparison specified by C
+
+        ... and stores it with 0/1 in the .. register
 
         =<> are indicated by *+., respectively. X and Y are expressions.
 
         """
-        C = _c[self.next()]
-        X = self.expression()
-        Y = self.expression()
-        self[".."] = int(C(X, Y))
+        comp = _c[self.next_token()]
+        x = self.expression()
+        y = self.expression()
+        self[".."] = int(comp(x, y))
 
     @opcode("+")
     def op_print_jump(self):
         """All opcodes with the + prefix"""
-        self.opcodes["+" + self.next()]
+        self.opcodes["+" + self.next_token()]
 
     @opcode("++")
     def op_print(self):
         """++ X prints the Unicode character represented by expression X to STDOUT."""
-        X = self.expression()
-        self.stdout.write(chr(X))
+        x = self.expression()
+        self.stdout.write(chr(x))
 
     @opcode("+.")
     def op_set_label(self):
@@ -257,20 +266,22 @@ class PixieDust:
         self.labels[label] = self.pos
 
     @opcode("+*")
-    def op_jump_label(self, _t={"*": operator.truth, ".": operator.not_, "+": str}):
-        """+* T L jumps to label L based on the condition T. 
+    def op_jump_label(
+        self, _t={"*": operator.truth, ".": operator.not_, "+": str}  # noqa B006
+    ):
+        """+* T L jumps to label L based on the condition T.
 
-        T can be 
-            * to jump if .. is not 0, 
-            . to jump if .. is 0, or 
+        T can be
+            * to jump if .. is not 0,
+            . to jump if .. is 0, or
             + to jump regardless of the value in ...
         """
         # evil grin: `str(0)` and `str(1)` are both true values.
         # So for +*+ (unconditional jump, `if str(register value):` will always be true
-        T = _t[self.next()]
-        L = "".join(self.tokens)
-        if T[self[".."]]:
-            self.pos = self.labels[L]
+        test = _t[self.next_token()]
+        label = "".join(self.tokens)
+        if test[self[".."]]:
+            self.pos = self.labels[label]
 
 
 if __name__ == "__main__":
