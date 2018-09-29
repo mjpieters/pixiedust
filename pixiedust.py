@@ -115,12 +115,10 @@ class PixieDust:
 
         self.tokens = iter(tokenizer(instruction))
         self.next = partial(next, self.tokens)
-        newpos = self._opcodes[self.next()]
+        self._opcodes[self.next()]
         if next(self.tokens, None) is not None:
             raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
-        if newpos is None:
-            newpos = self.pos + 1
-        self.pos = newpos
+        self.pos += 1
 
     # register handling
     def __getitem__(self, register, _b=str.maketrans(".+", "01")):
@@ -218,7 +216,7 @@ class PixieDust:
     @opcode("+")
     def op_print_jump(self):
         """All opcodes with the + prefix"""
-        return self._opcodes["+" + self.next()]
+        self._opcodes["+" + self.next()]
 
     @opcode("++")
     def op_print(self):
@@ -246,7 +244,7 @@ class PixieDust:
         T = _t[self.next()]
         L = "".join(list(self))
         if T[self[".."]]:
-            return self.labels[L] + 1
+            self.pos = self.labels[L]
 
 
 if __name__ == "__main__":
