@@ -227,7 +227,7 @@ class PixieDust:
     @opcode("+.")
     def op_set_label(self):
         """+. L defines a program label; L can be any number of characters."""
-        L = "".join(list(self))
+        L = "".join(self.tokens)
         self.labels[L] = self.pos
 
     @opcode("+*")
@@ -242,7 +242,7 @@ class PixieDust:
         # evil grin: `str(0)` and `str(1)` are both true values.
         # So for +*+ (unconditional jump, `if str(register value):` will always be true
         T = _t[self.next()]
-        L = "".join(list(self))
+        L = "".join(self.tokens)
         if T[self[".."]]:
             self.pos = self.labels[L]
 
