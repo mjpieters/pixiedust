@@ -19,15 +19,20 @@ tokenizer = re.compile(r"[*+.]").findall
 class opcode:
     """Descriptor / decorator for operator methods"""
 
-    def __init__(self, tokens, fget=None):
+    def __init__(self, tokens, fget=None, fvalidator=None):
         self.tokens = tokens
         self.fget = fget
+        self.fvalidator = fvalidator
 
     def __set_name__(self, owner, name):
-        owner._opcodes[self.tokens] = self
+        owner.opcodes[self.tokens] = self.fget
+        owner.validators[self.tokens] = self.fvalidator or (lambda *args: None)
 
     def __call__(self, fget):
-        return type(self)(self.tokens, fget)
+        return type(self)(self.tokens, fget, self.fvalidator)
+
+    def validator(self, fvalidator):
+        return type(self)(self.tokens, self.fget, fvalidator)
 
     def __get__(self, instance, owner):
         if instance is None:
@@ -96,7 +101,8 @@ class SQLiteMemory:
 
 
 class PixieDust:
-    _opcodes = Opcodes()
+    validators = Opcodes()
+    opcodes = Opcodes()
 
     def __init__(self, stdout=sys.stdout, stdin=sys.stdin):
         self.registers = {}
@@ -110,17 +116,24 @@ class PixieDust:
     # program execution
     def execute(self, dust):
         self.instructions = dust.splitlines()
+        self.pre_pass()
         while 0 <= self.pos < len(self.instructions):
             self.execute_next()
 
+    def pre_pass(self):
+        """Check instructions, parse out labels"""
+        for instruction in self.instructions:
+            if illegal(instruction):
+                raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
+            self.tokens = iter(tokenizer(instruction))
+            self.next = partial(next, self.tokens)
+            self.validators[self.next()]
+
     def execute_next(self):
         instruction = self.instructions[self.pos]
-        if illegal(instruction):
-            raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
-
         self.tokens = iter(tokenizer(instruction))
         self.next = partial(next, self.tokens)
-        self._opcodes[self.next()]
+        self.opcodes[self.next()]
         if next(self.tokens, None) is not None:
             raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
         self.pos += 1
@@ -170,7 +183,7 @@ class PixieDust:
         X and Y are expressions.
         """
         # fetch (prefix of) O and delegate
-        self._opcodes["*" + self.next()]
+        self.opcodes["*" + self.next()]
 
     @opcode("*.")
     def op_math_copy(self):
@@ -222,7 +235,7 @@ class PixieDust:
     @opcode("+")
     def op_print_jump(self):
         """All opcodes with the + prefix"""
-        self._opcodes["+" + self.next()]
+        self.opcodes["+" + self.next()]
 
     @opcode("++")
     def op_print(self):
