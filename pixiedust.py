@@ -184,8 +184,8 @@ class PixieDust:
         try:
             O = _o[self.next()]
         except KeyError:
-            # +* is reserved for future use.
-            return
+            # *+* is reserved for future use.
+            raise SyntaxError(f'No such opcode: *+*, on line {self.pos + 1}')
         R = self.next() + self.next()
         X = self.expression()
         Y = self.expression()
