@@ -75,7 +75,7 @@ class Memory:
                 """
                 INSERT OR REPLACE INTO memory (address, value)
                 VALUES (?, ?)""",
-                (address & 0x7fffffff, value),
+                (abs(address) & 0x7fffffff, value),
             )
 
     def __getitem__(self, address):
@@ -86,7 +86,7 @@ class Memory:
             FROM addresses
             LEFT JOIN "memory" USING (address);
             """,
-            (address & 0x7fffffff,),
+            (abs(address) & 0x7fffffff,),
         ).fetchone()[0]
 
 
@@ -138,7 +138,8 @@ class PixieDust:
 
     def __setitem__(self, register, value):
         assert len(register) == 2
-        value = value & 0xffffffff
+        # masking unsigned integers is .. hard.
+        value = value & 0x7fffffff if value >= 0 else -((-value - 1) & 0x7fffffff) - 1
         if register not in {"*.", "*+", ".*"}:
             self.registers[register] = value
             return
