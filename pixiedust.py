@@ -3,6 +3,7 @@
 # This software may be modified and distributed under the terms
 # of the MIT license.  See the LICENSE.txt file for details.
 
+import collections
 import operator
 import re
 import sqlite3
@@ -98,33 +99,67 @@ class SQLiteMemory:
 
     """
 
-    # memory is a sqlite table! Because I don't want to think about someone
-    # actually using the full address space, sqlite3 would neatly handle this
-    # by swapping to temp disk space instead.
-    def __init__(self):
-        self._conn = sqlite3.connect(":memory:")
-        self._conn.execute("CREATE TABLE memory (address INT PRIMARY KEY, value INT)")
+    # memory is swapped out to a sqlite table! Because I don't want to think
+    # about someone actually using the full address space, sqlite3 would
+    # neatly handle this by swapping to temp disk space instead.
+    # default page size gives us pages with ~128MB of Python integer storage,
+    # and there are 1024 pages. With 32 pages active and full, about 4GB
+    # of Python heap memory is used.
+    def __init__(self, page_size=2 ** 21, max_active=32):
+        self._page_size = page_size
+        self._max_active = max_active
+        self._pages = collections.OrderedDict()
+        self._conn = sqlite3.connect("")  # sqlite opens a temp file for this
+        self._conn.execute(
+            """
+            CREATE TABLE memory (
+                page INT, address INT, value INT,
+                PRIMARY KEY(page, address)
+            )
+            """
+        )
         self._cursor = self._conn.cursor()
 
-    def __setitem__(self, address, value):
+    def _get_page(self, pagenum):
+        if pagenum in self._pages:
+            self._pages.move_to_end(pagenum)
+            return self._pages[pagenum]
+
         with self._conn:
-            self._cursor.execute(
-                """
-                INSERT OR REPLACE INTO memory (address, value)
-                VALUES (?, ?)""",
-                (abs(address) & 0x7fffffff, value),
+            self._pages[pagenum] = page = dict(
+                self._cursor.execute(
+                    """
+                    SELECT address, value FROM memory
+                    WHERE page = ?
+                    """,
+                    (pagenum,),
+                )
             )
 
+        self._maybe_evict()
+        return page
+
+    def _maybe_evict(self):
+        if len(self._pages) > self._max_active:
+            pagenum, page = self._pages.popitem(last=False)
+            with self._conn:
+                self._cursor.executemany(
+                    f"""
+                    INSERT OR REPLACE INTO memory (page, address, value)
+                    VALUES ({pagenum}, ?, ?)
+                    """,
+                    page.items(),
+                )
+
+    def __setitem__(self, address, value):
+        address = abs(address) & 0x7fffffff
+        pagenum, subaddress = address // self._page_size, address % self._page_size
+        self._get_page(pagenum)[subaddress] = value
+
     def __getitem__(self, address):
-        return self._cursor.execute(
-            """
-            WITH addresses(address) AS (SELECT ?)
-            SELECT IFNULL(value, 0) as value
-            FROM addresses
-            LEFT JOIN "memory" USING (address);
-            """,
-            (abs(address) & 0x7fffffff,),
-        ).fetchone()[0]
+        address = abs(address) & 0x7fffffff
+        pagenum, subaddress = address // self._page_size, address % self._page_size
+        return self._get_page(pagenum).get(subaddress, 0)
 
 
 # mapping pixiedust characters to bits for the .* literal syntax
@@ -196,7 +231,7 @@ class PixieDust:
             # integers are signed 32-bit values
             bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 33)))
             neg = len(bits) > 31 and bits[0] == "+"
-            return int(bits[-31:].translate(_b) or '0', 2) - (0x80000000 if neg else 0)
+            return int(bits[-31:].translate(_b) or "0", 2) - (0x80000000 if neg else 0)
 
     def __setitem__(self, register, value):
         assert len(register) == 2

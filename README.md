@@ -17,6 +17,13 @@ The standard unittest framework is used for testing. Run the tests with:
 $ python3 test_pixiedust.py
 ```
 
+and there are sloooowww memory tests that try to push the boundaries of the
+memory model:
+
+```shell
+$ python3 test_memory_perf.py
+```
+
 ## License
 
 This software may be modified and distributed under the terms of the MIT
