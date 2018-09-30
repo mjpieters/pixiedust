@@ -204,6 +204,29 @@ class PixieDustTests(unittest.TestCase):
         interpreter.execute(helloworld)
         self.assertEqual(out.getvalue(), "Hello, World!")
 
+    def test_expressions(self):
+        bindust_map = str.maketrans('01', '.+')
+        pos_increment = "*++ ** ** .* +\n"  # add 1 to the ** register
+        # try several different literal sizes
+        for i in range(0, 0x80000000, 0x1234567):
+            long_literal = format(i, '032b').translate(bindust_map) + '*'
+            negative_literal = '+' + long_literal[1:]
+            short_literal = long_literal.lstrip('.').rstrip('*')
+
+            interpreter = pixiedust.PixieDust()
+            interpreter.execute(
+                # store each of the literals in memory
+                # *. *. copies to the memory pointer, *++ ** + increments the pointer
+                pos_increment.join([
+                    f"*. *. .* {long_literal}\n",
+                    f"*. *. .* {short_literal}\n",
+                    f"*. *. .* {negative_literal}\n",
+                ])
+            )
+            self.assertEqual(interpreter.memory[0], i)
+            self.assertEqual(interpreter.memory[1], i)
+            self.assertEqual(interpreter.memory[2], -0x80000000 + i)
+
 
 class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_label_errors(self):
@@ -286,6 +309,19 @@ class PixieDustSyntaxErrorTests(unittest.TestCase):
                 "*. ** .* .*\n"
                 # math operator * on two 0 literals
                 "*+ * .* .* .* .*\n"
+            )
+
+    def test_invalid_literal(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(
+            SyntaxError, r"Invalid number literal on line 2"
+        ):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # copy 0 literal to the ** register, but with a bit too many
+                "*. ** .* .................................*\n"
             )
 
 

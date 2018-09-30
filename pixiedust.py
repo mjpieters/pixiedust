@@ -194,9 +194,9 @@ class PixieDust:
         elif register == ".*":
             # up to 32 bits, terminated by * or the end of the instruction
             # integers are signed 32-bit values
-            bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 32)))
+            bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 33)))
             neg = len(bits) > 31 and bits[0] == "+"
-            return int(bits[-31:].translate(_b), 2) - (0x80000000 if neg else 0)
+            return int(bits[-31:].translate(_b) or '0', 2) - (0x80000000 if neg else 0)
 
     def __setitem__(self, register, value):
         assert len(register) == 2
@@ -221,7 +221,10 @@ class PixieDust:
                 raise SyntaxError(f"No such register: .*, on line {self.pos + 1}")
             else:
                 # consume the literal tokens
-                "".join(takewhile(lambda t: t != "*", islice(self.tokens, 32)))
+                bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 33)))
+                if len(bits) >= 33:
+                    # too many bits
+                    raise SyntaxError(f"Invalid number literal on line {self.pos + 1}")
 
     def validate_expression(self):
         self.validate_register()
