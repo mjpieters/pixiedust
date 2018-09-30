@@ -204,6 +204,27 @@ class PixieDustTests(unittest.TestCase):
         interpreter.execute(helloworld)
         self.assertEqual(out.getvalue(), "Hello, World!")
 
+    def test_label_errors(self):
+        interpreter = pixiedust.PixieDust()
+
+        bad_label = "".join([random.choice("*+.") for _ in range(10)])
+        with self.assertRaisesRegex(SyntaxError, "Invalid label target on line 1"):
+            interpreter.execute(
+                # jump to bad label
+                f"+* + {bad_label}\n"
+            )
+
+        good_label = "".join([random.choice("*+.") for _ in range(10)])
+        with self.assertRaisesRegex(SyntaxError, "Invalid label target on line 3"):
+            interpreter.execute(
+                # set good_label
+                f"+. {good_label}\n"
+                # jnz to good label
+                f"+* * {good_label}\n"
+                # jump to bad label
+                f"+* + {bad_label}\n"
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

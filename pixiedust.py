@@ -143,7 +143,7 @@ class PixieDust:
         self.instructions = []
         self.labels = {}
         # used by pre-pass validation
-        self.labels_used = set()
+        self.labels_used = {}
 
     # program execution
     def execute(self, dust):
@@ -162,6 +162,11 @@ class PixieDust:
             self.tokens = iter(tokenizer(instruction))
             self.next_token = partial(next, self.tokens)
             self.validators[self.next_token()]
+        if self.labels_used.keys() > self.labels.keys():
+            # jump to non-existing label
+            unavailable = self.labels_used.keys() - self.labels
+            lineno = min(self.labels_used[l] for l in unavailable)
+            raise SyntaxError(f"Invalid label target on line {lineno}")
 
     def execute_next(self):
         instruction = self.instructions[self.pos]
@@ -300,6 +305,13 @@ class PixieDust:
         label = "".join(self.tokens)
         if test[self[".."]]:
             self.pos = self.labels[label]
+
+    @op_jump_label.validator
+    def op_jump_label(self):
+        """Validate the label exists during pre-pass"""
+        self.next_token()  # the test token
+        label = "".join(self.tokens)
+        self.labels_used[label] = self.pos + 1
 
 
 if __name__ == "__main__":
