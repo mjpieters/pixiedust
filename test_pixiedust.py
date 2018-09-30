@@ -204,18 +204,20 @@ class PixieDustTests(unittest.TestCase):
         interpreter.execute(helloworld)
         self.assertEqual(out.getvalue(), "Hello, World!")
 
+
+class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_label_errors(self):
         interpreter = pixiedust.PixieDust()
 
         bad_label = "".join([random.choice("*+.") for _ in range(10)])
-        with self.assertRaisesRegex(SyntaxError, "Invalid label target on line 1"):
+        with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 1"):
             interpreter.execute(
                 # jump to bad label
                 f"+* + {bad_label}\n"
             )
 
         good_label = "".join([random.choice("*+.") for _ in range(10)])
-        with self.assertRaisesRegex(SyntaxError, "Invalid label target on line 3"):
+        with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 3"):
             interpreter.execute(
                 # set good_label
                 f"+. {good_label}\n"
@@ -223,6 +225,67 @@ class PixieDustTests(unittest.TestCase):
                 f"+* * {good_label}\n"
                 # jump to bad label
                 f"+* + {bad_label}\n"
+            )
+
+    def test_trailing(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(SyntaxError, r"Trailing characters on line 2"):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # copy 0 literal to the ** register, with extra dots
+                "*. ** .* .* ....\n"
+            )
+
+    def test_invalid_chars(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(SyntaxError, r"Invalid characters on line 2"):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # copy 0 literal to the ** register, with extra dots
+                "*. ** .* .* SPAM\n"
+            )
+
+    def test_missing_chars(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(
+            SyntaxError, r"Missing instruction characters on line 2"
+        ):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # copy to the ** register, incomplete expression
+                "*. ** .\n"
+            )
+
+    def test_setting_literal_register(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(
+            SyntaxError, r"No such register: \.\*, on line 2"
+        ):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # copy 0 literal to the .* register (the literal register)
+                "*. .* .* .*\n"
+            )
+
+    def test_setting_literal_register(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.assertRaisesRegex(
+            SyntaxError, r"No such math operator: \*\+\*, on line 2"
+        ):
+            interpreter.execute(
+                # copy 0 literal to the ** register
+                "*. ** .* .*\n"
+                # math operator * on two 0 literals
+                "*+ * .* .* .* .*\n"
             )
 
 

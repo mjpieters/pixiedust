@@ -161,7 +161,14 @@ class PixieDust:
                 raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
             self.tokens = iter(tokenizer(instruction))
             self.next_token = partial(next, self.tokens)
-            self.validators[self.next_token()]
+            try:
+                self.validators[self.next_token()]
+            except StopIteration:
+                raise SyntaxError(
+                    f"Missing instruction characters on line {self.pos + 1}"
+                )
+            if next(self.tokens, None) is not None:
+                raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
         if self.labels_used.keys() > self.labels.keys():
             # jump to non-existing label
             unavailable = self.labels_used.keys() - self.labels
@@ -173,8 +180,6 @@ class PixieDust:
         self.tokens = iter(tokenizer(instruction))
         self.next_token = partial(next, self.tokens)
         self.opcodes[self.next_token()]
-        if next(self.tokens, None) is not None:
-            raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
         self.pos += 1
 
     # register handling
@@ -204,12 +209,22 @@ class PixieDust:
             self.memory[self["**"]] = value
         elif register == "*+":
             self.stdout.write(value)
-        elif register == ".*":
-            # reserved for future use
-            raise SyntaxError(f"No such register: .*, on line {self.pos + 1}")
 
     def expression(self):
         return self[self.next_token() + self.next_token()]
+
+    def validate_register(self, toset=False):
+        register = self.next_token() + self.next_token()
+        if register == ".*":
+            if toset:
+                # reserved for future use
+                raise SyntaxError(f"No such register: .*, on line {self.pos + 1}")
+            else:
+                # consume the literal tokens
+                "".join(takewhile(lambda t: t != "*", islice(self.tokens, 32)))
+
+    def validate_expression(self):
+        self.validate_register()
 
     # opcode implementation
 
@@ -230,18 +245,29 @@ class PixieDust:
         x = self.expression()
         self[register] = x
 
+    @op_math_copy.validator
+    def op_math_copy(self):
+        self.validate_register(True)
+        self.validate_expression()
+
     @opcode("*+")
     def op_math_add_sub(self, _o={"+": operator.add, ".": operator.sub}):  # noqa B006
         """* O: ++ for addition, +. for subtraction"""
-        try:
-            oper = _o[self.next_token()]
-        except KeyError:
-            # *+* is reserved for future use.
-            raise SyntaxError(f"No such opcode: *+*, on line {self.pos + 1}")
+        oper = _o[self.next_token()]
         register = self.next_token() + self.next_token()
         x = self.expression()
         y = self.expression()
         self[register] = oper(x, y)
+
+    @op_math_add_sub.validator
+    def op_math_add_sub(self):
+        oper = self.next_token()
+        if oper == "*":
+            # *+* is reserved for future use.
+            raise SyntaxError(f"No such math operator: *+*, on line {self.pos + 1}")
+        self.validate_register(True)
+        self.validate_expression()
+        self.validate_expression()
 
     @opcode("**")
     def op_math_mul_div_mod(
@@ -254,6 +280,13 @@ class PixieDust:
         x = self.expression()
         y = self.expression()
         self[register] = oper(x, y)
+
+    @op_math_mul_div_mod.validator
+    def op_math_mul_div_mod(self):
+        self.next_token()  # skip operator token
+        self.validate_register(True)
+        self.validate_expression()
+        self.validate_expression()
 
     @opcode(".")
     def op_comp(
@@ -271,11 +304,21 @@ class PixieDust:
         y = self.expression()
         self[".."] = int(comp(x, y))
 
+    @op_comp.validator
+    def op_comp(self):
+        self.next_token()  # skip comparator token
+        self.validate_expression()
+        self.validate_expression()
+
     @opcode("++")
     def op_print(self):
         """++ X prints the Unicode character represented by expression X to STDOUT."""
         x = self.expression()
         self.stdout.write(chr(x))
+
+    @op_print.validator
+    def op_print(self):
+        self.validate_expression()
 
     @opcode("+.")
     def op_set_label(self):
