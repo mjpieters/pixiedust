@@ -141,7 +141,6 @@ class PixieDust:
         self.stdout = stdout
         self.stdin = stdin
         self.instructions = []
-        self.pos = 0
         self.labels = {}
         # used by pre-pass validation
         self.labels_used = set()
@@ -150,12 +149,14 @@ class PixieDust:
     def execute(self, dust):
         self.instructions = dust.splitlines()
         self.pre_pass()
+        self.pos = 0
         while 0 <= self.pos < len(self.instructions):
             self.execute_next()
 
     def pre_pass(self):
         """Check instructions, parse out labels"""
-        for instruction in self.instructions:
+        for i, instruction in enumerate(self.instructions):
+            self.pos = i
             if illegal(instruction):
                 raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
             self.tokens = iter(tokenizer(instruction))
