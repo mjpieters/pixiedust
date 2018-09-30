@@ -48,6 +48,14 @@ class Opcodes(dict):
 
     """
 
+    def __init__(self, items=(), name=None, instance=None):
+        self.name = name
+        self.instance = instance
+        if instance is not None:
+            # bind everything to instance just once
+            items = ((t, o.__get__(instance)) for t, o in items)
+        super().__init__(items)
+
     def __set_name__(self, owner, name):
         self.name = name
 
@@ -56,12 +64,31 @@ class Opcodes(dict):
             return self
         # cache on get, to get out of the way next time
         bound = instance.__dict__[self.name] = Opcodes(
-            (t, o.__get__(instance, owner)) for t, o in self.items()
+            self.items(), name=self.name, instance=instance
         )
         return bound
 
     def __getitem__(self, opcode):
         return super().__getitem__(opcode)()
+
+    def __missing__(self, opcode):
+        """Handle intermediate opcodes
+
+        For opcodes like ++, the + prefix is not registered
+        but this handler creates one which passes on the call
+        to the composite token.
+
+        """
+        # Potentially this could lead to handlers being generated
+        # for non-existing tokens, but instruction lines are
+        # not infinite, so it'll be fine.
+        map = getattr(self.instance, self.name)
+
+        def intermediate(self):
+            map[opcode + self.next_token()]
+
+        bound = self[opcode] = intermediate.__get__(self.instance)
+        return bound
 
 
 class SQLiteMemory:
@@ -180,16 +207,11 @@ class PixieDust:
 
     # opcode implementation
 
-    @opcode("*")
-    def op_math(self):
-        """* O R X Y is a mathematical operation
-
-        O specifies the operation to use: ...
-        R specifies the register to store the result to.
-        X and Y are expressions.
-        """
-        # fetch (prefix of) O and delegate
-        self.opcodes["*" + self.next_token()]
+    # * O R X Y is a mathematical operation
+    #
+    # O specifies the operation to use: ...
+    # R specifies the register to store the result to.
+    # X and Y are expressions.
 
     @opcode("*.")
     def op_math_copy(self):
@@ -242,11 +264,6 @@ class PixieDust:
         x = self.expression()
         y = self.expression()
         self[".."] = int(comp(x, y))
-
-    @opcode("+")
-    def op_print_jump(self):
-        """All opcodes with the + prefix"""
-        self.opcodes["+" + self.next_token()]
 
     @opcode("++")
     def op_print(self):

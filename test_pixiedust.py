@@ -16,33 +16,33 @@ class OpcodeTests(unittest.TestCase):
             opcodes = {}
             validators = {}
 
-            @pixiedust.opcode("bar")
+            @pixiedust.opcode("b")
             def bar(self):
-                return 'bar'
+                return "bar"
 
-        self.assertTrue("bar" in Foo.opcodes)
-        self.assertTrue("bar" in Foo.validators)
-        self.assertIs(Foo.opcodes["bar"], Foo.bar.fget)
+        self.assertTrue("b" in Foo.opcodes)
+        self.assertTrue("b" in Foo.validators)
+        self.assertIs(Foo.opcodes["b"], Foo.bar.fget)
         # validator is a noop lambda
-        self.assertEqual(Foo.validators["bar"].__name__, '<lambda>')
+        self.assertEqual(Foo.validators["b"].__name__, "<lambda>")
 
     def test_decorator_registers_with_validator(self):
         class Foo:
             opcodes = {}
             validators = {}
 
-            @pixiedust.opcode("bar")
+            @pixiedust.opcode("b")
             def bar(self):
-                return 'bar'
+                return "bar"
 
             @bar.validator
             def bar(self):
-                return 'validator'
+                return "validator"
 
-        self.assertTrue("bar" in Foo.opcodes)
-        self.assertTrue("bar" in Foo.validators)
-        self.assertIs(Foo.opcodes["bar"], Foo.bar.fget)
-        self.assertIs(Foo.validators["bar"], Foo.bar.fvalidator)
+        self.assertTrue("b" in Foo.opcodes)
+        self.assertTrue("b" in Foo.validators)
+        self.assertIs(Foo.opcodes["b"], Foo.bar.fget)
+        self.assertIs(Foo.validators["b"], Foo.bar.fvalidator)
 
     def test_opcode_descriptor_binds(self):
         class Foo:
@@ -69,33 +69,63 @@ class OpcodeTests(unittest.TestCase):
 class OpcodesTests(unittest.TestCase):
     def test_opcodes_descriptor_binds(self):
         class Foo:
-            opcodes = pixiedust.Opcodes()
+            registry = pixiedust.Opcodes()
 
             def bar(self):
                 pass
 
             # manual registration of a descriptor object
-            opcodes["bar"] = bar
+            registry["b"] = bar
 
         with self.subTest("unbound"):
             # class access does not bind (return self)
-            unbound = Foo.opcodes
-            self.assertIs(unbound, Foo.__dict__["opcodes"])
+            unbound = Foo.registry
+            self.assertIs(unbound, Foo.__dict__["registry"])
 
             # values are unchanged, using dict.get to avoid __getitem__ hook
-            self.assertIs(unbound.get("bar"), Foo.bar)
+            self.assertIs(unbound.get("b"), Foo.bar)
 
         with self.subTest("bound"):
             # instance access binds and caches
             instance = Foo()
-            bound = instance.opcodes
+            bound = instance.registry
             self.assertIsNot(bound, unbound)
             self.assertIsInstance(bound, pixiedust.Opcodes)
-            self.assertIn("opcodes", instance.__dict__)
+            self.assertIn("registry", instance.__dict__)
 
             # the values have all been bound
             # using dict.get to avoid __getitem__
-            self.assertIs(bound.get("bar").__func__, instance.bar.__func__)
+            self.assertIs(bound.get("b").__func__, instance.bar.__func__)
+
+    def test_auto_intermediaries(self):
+        class Foo:
+            registry = pixiedust.Opcodes()
+
+            def test_tokens(self, tokens):
+                tokeniter = iter(tokens)
+                self.next_token = lambda: next(tokeniter)
+                self.called = None
+                self.registry[self.next_token()]
+                return self.called
+
+            def bar(self):
+                self.called = "bar"
+
+            def baz(self):
+                self.called = "baz"
+
+            # manual registrations for this test
+            registry["abr"] = bar
+            registry["abz"] = baz
+
+        # we don't care about the unbound class.opcodes[...] case,
+        # it's the full 'abc' path that must work,
+        instance = Foo()
+        self.assertEqual(instance.test_tokens("abr"), "bar")
+        self.assertEqual(instance.test_tokens("abz"), "baz")
+        # intermediares are only generated on first access
+        self.assertIn("a", instance.registry)
+        self.assertIn("ab", instance.registry)
 
     def test_opcodes_get_calls(self):
         class Foo:
@@ -161,18 +191,18 @@ class PixieDustTests(unittest.TestCase):
     def test_helloworld(self):
         helloworld = (  # original hello world golf sample
             # Hello
-            '++.*+..+...\n++.*++..+.+\n++.*++.++..\n++.*++.++..\n++.*++.++++\n'
+            "++.*+..+...\n++.*++..+.+\n++.*++.++..\n++.*++.++..\n++.*++.++++\n"
             # ,<space>
-            '++.*+.++..\n++.*+.....\n'
+            "++.*+.++..\n++.*+.....\n"
             # World
-            '++.*+.+.+++\n++.*++.++++\n++.*+++..+.\n++.*++.++..\n++.*++..+..\n'
+            "++.*+.+.+++\n++.*++.++++\n++.*+++..+.\n++.*++.++..\n++.*++..+..\n"
             # !
-            '++.*+....+'
+            "++.*+....+"
         )
         out = io.StringIO()
         interpreter = pixiedust.PixieDust(stdout=out)
         interpreter.execute(helloworld)
-        self.assertEqual(out.getvalue(), 'Hello, World!')
+        self.assertEqual(out.getvalue(), "Hello, World!")
 
 
 if __name__ == "__main__":
