@@ -346,7 +346,7 @@ class PixieDustSyntaxErrorTests(unittest.TestCase):
                 "*. .* .* .*\n"
             )
 
-    def test_setting_literal_register(self):
+    def test_invalid_math_operator(self):
         interpreter = pixiedust.PixieDust()
 
         with self.assertRaisesRegex(
