@@ -264,6 +264,39 @@ class PixieDustTests(unittest.TestCase):
         )
         self.assertEqual(interpreter.memory[0], 42)
 
+    def test_math(self):
+        interpreter = pixiedust.PixieDust()
+
+        # tests set memory address 0 to the result
+        # of the operation on two literals.
+        tests = {
+            "add": "*++ *. .* +.++.* .* +.+..\n",  # 22 + 20
+            "subtract": "*+. *. .* +++++.* .* +.+..\n",  # 62 - 20
+            "multiply": "*** *. .* +.+.+* .* +.\n",  # 21 * 2
+            "divide": "**. *. .* +++++++* .* ++\n",  # 127 // 3
+            "modulo": "**+ *. .* +++........+.* .* +.+...+\n",  # 7170 % 81
+        }
+
+        for name, dust in tests.items():
+            with self.subTest(name):
+                interpreter.execute(dust)
+                self.assertEqual(interpreter.memory[0], 42)
+
+    def test_comp(self):
+        interpreter = pixiedust.PixieDust()
+
+        tests = {
+            "equals": (".* .* +* .* +\n", ".* .* +* .* .\n"),
+            "lower": (".+ .* .* .* +\n", ".+ .* .* .* .\n"),
+            "greater": (".. .* +* .* .\n", ".. .* .* .* .\n"),
+        }
+        for name, (true, false) in tests.items():
+            with self.subTest(name):
+                interpreter.execute(true)
+                self.assertEqual(interpreter.registers[".."], 1)
+                interpreter.execute(false)
+                self.assertEqual(interpreter.registers[".."], 0)
+
 
 class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_label_errors(self):

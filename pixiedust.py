@@ -178,7 +178,7 @@ class PixieDust:
     # PixieDust interpreter. Compiles instructions to a tuple of
     # (callable, argcount) operations each. Results are pushed on
     # a stack, and callables are passed argcount top values from
-    # the stack, reversed.
+    # the stack.
 
     opcodes = Opcodes()
 
@@ -195,7 +195,7 @@ class PixieDust:
         while 0 <= self.pos < len(instructions):
             # An instruction consists of (callable, argcount) entries,
             # where argcount is passed the most recent argcount of results,
-            # in reverse stack order.
+            # in stack order (top-most first)
             stack = collections.deque()
             for op, count in instructions[self.pos]:
                 args = (stack.pop() for _ in itertools.repeat(None, count))
@@ -312,7 +312,7 @@ class PixieDust:
         register_set = self.compile_register_set()
         x_get = self.compile_register_get()
         y_get = self.compile_register_get()
-        return (*x_get, *y_get, oper, *register_set)
+        return (*y_get, *x_get, oper, *register_set)
 
     @opcode("**")
     def op_math_mul_div_mod(
@@ -325,7 +325,7 @@ class PixieDust:
         x_get = self.compile_register_get()
         y_get = self.compile_register_get()
         # put y on the stack first
-        return (*x_get, *y_get, oper, *register_set)
+        return (*y_get, *x_get, oper, *register_set)
 
     @opcode(".")
     def op_comp(
@@ -339,10 +339,10 @@ class PixieDust:
 
         """
         comp = (_c[self.next_token()], 2), (int, 1)
-        x_get = self.expression()
-        y_get = self.expression()
+        x_get = self.compile_register_get()
+        y_get = self.compile_register_get()
         register_set = self.compile_register_set("..")
-        return (*x_get, *y_get, comp, *register_set)
+        return (*y_get, *x_get, *comp, *register_set)
 
     @opcode("++")
     def op_print(self):
