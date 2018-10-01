@@ -147,8 +147,8 @@ class SQLMemoryTests(unittest.TestCase):
     def test_basic_get_set(self):
         memory = pixiedust.SQLiteMemory()
 
-        address = random.randint(0, 0x7fffffff)
-        value = random.randint(0, 0xffffffff)
+        address = random.randint(0, 0x7FFFFFFF)
+        value = random.randint(0, 0xFFFFFFFF)
 
         memory[address] = value
         self.assertEqual(memory[address], value)
@@ -158,8 +158,8 @@ class SQLMemoryTests(unittest.TestCase):
         # as both are masked.
         memory = pixiedust.SQLiteMemory()
 
-        address_boundaries = 0, 0x7fffffff
-        value_boundaries = -0x80000000, 0x7fffffff
+        address_boundaries = 0, 0x7FFFFFFF
+        value_boundaries = -0x80000000, 0x7FFFFFFF
 
         address = random.randint(*address_boundaries)
         value = random.randint(*value_boundaries)
@@ -205,23 +205,25 @@ class PixieDustTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), "Hello, World!")
 
     def test_expressions(self):
-        bindust_map = str.maketrans('01', '.+')
+        bindust_map = str.maketrans("01", ".+")
         pos_increment = "*++ ** ** .* +\n"  # add 1 to the ** register
         # try several different literal sizes
         for i in range(0, 0x80000000, 0x1234567):
-            long_literal = format(i, '032b').translate(bindust_map) + '*'
-            negative_literal = '+' + long_literal[1:]
-            short_literal = long_literal.lstrip('.').rstrip('*')
+            long_literal = format(i, "032b").translate(bindust_map) + "*"
+            negative_literal = "+" + long_literal[1:]
+            short_literal = long_literal.lstrip(".").rstrip("*")
 
             interpreter = pixiedust.PixieDust()
             interpreter.execute(
                 # store each of the literals in memory
                 # *. *. copies to the memory pointer, *++ ** + increments the pointer
-                pos_increment.join([
-                    f"*. *. .* {long_literal}\n",
-                    f"*. *. .* {short_literal}\n",
-                    f"*. *. .* {negative_literal}\n",
-                ])
+                pos_increment.join(
+                    [
+                        f"*. *. .* {long_literal}\n",
+                        f"*. *. .* {short_literal}\n",
+                        f"*. *. .* {negative_literal}\n",
+                    ]
+                )
             )
             self.assertEqual(interpreter.memory[0], i)
             self.assertEqual(interpreter.memory[1], i)
@@ -288,9 +290,7 @@ class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_setting_literal_register(self):
         interpreter = pixiedust.PixieDust()
 
-        with self.assertRaisesRegex(
-            SyntaxError, r"No such register: \.\*, on line 2"
-        ):
+        with self.assertRaisesRegex(SyntaxError, r"No such register: \.\*, on line 2"):
             interpreter.execute(
                 # copy 0 literal to the ** register
                 "*. ** .* .*\n"
@@ -314,9 +314,7 @@ class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_invalid_literal(self):
         interpreter = pixiedust.PixieDust()
 
-        with self.assertRaisesRegex(
-            SyntaxError, r"Invalid number literal on line 2"
-        ):
+        with self.assertRaisesRegex(SyntaxError, r"Invalid number literal on line 2"):
             interpreter.execute(
                 # copy 0 literal to the ** register
                 "*. ** .* .*\n"

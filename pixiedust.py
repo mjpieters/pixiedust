@@ -152,12 +152,12 @@ class SQLiteMemory:
                 )
 
     def __setitem__(self, address, value):
-        address = abs(address) & 0x7fffffff
+        address = abs(address) & 0x7FFFFFFF
         pagenum, subaddress = address // self._page_size, address % self._page_size
         self._get_page(pagenum)[subaddress] = value
 
     def __getitem__(self, address):
-        address = abs(address) & 0x7fffffff
+        address = abs(address) & 0x7FFFFFFF
         pagenum, subaddress = address // self._page_size, address % self._page_size
         return self._get_page(pagenum).get(subaddress, 0)
 
@@ -236,7 +236,7 @@ class PixieDust:
     def __setitem__(self, register, value):
         assert len(register) == 2
         # masking unsigned integers is .. hard.
-        value = value & 0x7fffffff if value >= 0 else -((-value - 1) & 0x7fffffff) - 1
+        value = value & 0x7FFFFFFF if value >= 0 else -((-value - 1) & 0x7FFFFFFF) - 1
         if register not in {"*.", "*+", ".*"}:
             self.registers[register] = value
             return
