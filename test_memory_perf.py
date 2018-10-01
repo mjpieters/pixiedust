@@ -17,7 +17,7 @@ class SQLMemoryPerfTests(unittest.TestCase):
 
         # set the test values
         label = (
-            f"randomised memory test: setting "
+            "randomised memory test: setting "
             f"{{:>{len(str(testsize - 1))}d}} / {testsize} values."
         )
         tests = {}
