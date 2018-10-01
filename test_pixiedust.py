@@ -11,43 +11,20 @@ import pixiedust
 
 
 class OpcodeTests(unittest.TestCase):
-    def test_decorator_registers_without_validator(self):
+    def test_decorator_registers(self):
         class Foo:
             opcodes = {}
-            validators = {}
 
             @pixiedust.opcode("b")
             def bar(self):
                 return "bar"
 
         self.assertTrue("b" in Foo.opcodes)
-        self.assertTrue("b" in Foo.validators)
         self.assertIs(Foo.opcodes["b"], Foo.bar.fget)
-        # validator is a noop lambda
-        self.assertEqual(Foo.validators["b"].__name__, "<lambda>")
-
-    def test_decorator_registers_with_validator(self):
-        class Foo:
-            opcodes = {}
-            validators = {}
-
-            @pixiedust.opcode("b")
-            def bar(self):
-                return "bar"
-
-            @bar.validator
-            def bar(self):
-                return "validator"
-
-        self.assertTrue("b" in Foo.opcodes)
-        self.assertTrue("b" in Foo.validators)
-        self.assertIs(Foo.opcodes["b"], Foo.bar.fget)
-        self.assertIs(Foo.validators["b"], Foo.bar.fvalidator)
 
     def test_opcode_descriptor_binds(self):
         class Foo:
             opcodes = {}
-            validators = {}
 
             @pixiedust.opcode("bar")
             def bar(self):
@@ -292,23 +269,36 @@ class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_label_errors(self):
         interpreter = pixiedust.PixieDust()
 
-        bad_label = "".join([random.choice("*+.") for _ in range(10)])
-        with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 1"):
-            interpreter.execute(
-                # jump to bad label
-                f"+* + {bad_label}\n"
-            )
+        with self.subTest("redefinition"):
+            good_label = "".join([random.choice("*+.") for _ in range(10)])
+            with self.assertRaisesRegex(
+                SyntaxError, r"Re-definition of label '[*+.]+' on line 2"
+            ):
+                interpreter.execute(
+                    # set good_label
+                    f"+. {good_label}\n"
+                    # set it again
+                    f"+. {good_label}\n"
+                )
 
-        good_label = "".join([random.choice("*+.") for _ in range(10)])
-        with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 3"):
-            interpreter.execute(
-                # set good_label
-                f"+. {good_label}\n"
-                # jnz to good label
-                f"+* * {good_label}\n"
-                # jump to bad label
-                f"+* + {bad_label}\n"
-            )
+        with self.subTest("invalid target"):
+            bad_label = "".join([random.choice("*+.") for _ in range(10)])
+            with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 1"):
+                interpreter.execute(
+                    # jump to bad label
+                    f"+* + {bad_label}\n"
+                )
+
+        with self.subTest("invalid target after valid"):
+            with self.assertRaisesRegex(SyntaxError, r"Invalid label target on line 3"):
+                interpreter.execute(
+                    # set good_label
+                    f"+. {good_label}\n"
+                    # jnz to good label
+                    f"+* * {good_label}\n"
+                    # jump to bad label
+                    f"+* + {bad_label}\n"
+                )
 
     def test_trailing(self):
         interpreter = pixiedust.PixieDust()

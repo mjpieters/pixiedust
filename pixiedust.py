@@ -4,6 +4,7 @@
 # of the MIT license.  See the LICENSE.txt file for details.
 
 import collections
+import itertools
 import operator
 import re
 import sqlite3
@@ -27,7 +28,6 @@ class opcode:
 
     def __set_name__(self, owner, name):
         owner.opcodes[self.tokens] = self.fget
-        owner.validators[self.tokens] = self.fvalidator or (lambda *args: None)
 
     def __call__(self, fget):
         return type(self)(self.tokens, fget, self.fvalidator)
@@ -86,7 +86,7 @@ class Opcodes(dict):
         map = getattr(self.instance, self.name)
 
         def intermediate(self):
-            map[opcode + self.next_token()]
+            return map[opcode + self.next_token()]
 
         bound = self[opcode] = intermediate.__get__(self.instance)
         return bound
@@ -164,10 +164,22 @@ class SQLiteMemory:
 
 # mapping pixiedust characters to bits for the .* literal syntax
 _dustbin_map = str.maketrans(".+", "01")
+# label offset dummy
+
+
+def _offset_missing():
+    raise RuntimeError("Missing label offset identity callable")
+
+
+_offset_placeholder = _offset_missing, 0
 
 
 class PixieDust:
-    validators = Opcodes()
+    # PixieDust interpreter. Compiles instructions to a tuple of
+    # (callable, argcount) operations each. Results are pushed on
+    # a stack, and callables are passed argcount top values from
+    # the stack, reversed.
+
     opcodes = Opcodes()
 
     def __init__(self, stdout=sys.stdout, stdin=sys.stdin):
@@ -175,94 +187,98 @@ class PixieDust:
         self.memory = SQLiteMemory()
         self.stdout = stdout
         self.stdin = stdin
-        self.instructions = []
-        self.labels = {}
-        # used by pre-pass validation
-        self.labels_used = {}
 
     # program execution
     def execute(self, dust):
-        self.instructions = dust.splitlines()
-        self.pre_pass()
+        instructions = self.compile(dust)
         self.pos = 0
-        while 0 <= self.pos < len(self.instructions):
-            self.execute_next()
+        while 0 <= self.pos < len(instructions):
+            # An instruction consists of (callable, argcount) entries,
+            # where argcount is passed the most recent argcount of results,
+            # in reverse stack order.
+            stack = collections.deque()
+            for op, count in instructions[self.pos]:
+                args = (stack.pop() for _ in itertools.repeat(None, count))
+                stack.append(op(*args))
+            self.pos += 1
 
-    def pre_pass(self):
-        """Check instructions, parse out labels"""
-        for i, instruction in enumerate(self.instructions):
+    def compile(self, dust):
+        """Convert instructions to a series of (operation, argcount) sequences"""
+        self.labels = {}
+        self.label_jumps = {}
+        compiled = []
+
+        for i, instruction in enumerate(dust.splitlines()):
             self.pos = i
             if illegal(instruction):
                 raise SyntaxError(f"Invalid characters on line {self.pos + 1}")
             self.tokens = iter(tokenizer(instruction))
             self.next_token = partial(next, self.tokens)
             try:
-                self.validators[self.next_token()]
+                compiled.append(self.opcodes[self.next_token()])
             except StopIteration:
                 raise SyntaxError(
                     f"Missing instruction characters on line {self.pos + 1}"
                 )
             if next(self.tokens, None) is not None:
                 raise SyntaxError(f"Trailing characters on line {self.pos + 1}")
-        if self.labels_used.keys() > self.labels.keys():
-            # jump to non-existing label
-            unavailable = self.labels_used.keys() - self.labels
-            lineno = min(self.labels_used[l] for l in unavailable)
-            raise SyntaxError(f"Invalid label target on line {lineno}")
 
-    def execute_next(self):
-        instruction = self.instructions[self.pos]
-        self.tokens = iter(tokenizer(instruction))
-        self.next_token = partial(next, self.tokens)
-        self.opcodes[self.next_token()]
-        self.pos += 1
+        # set jump offsets, needs to be done at the end when all label targets
+        # have been processed.
+        for label, positions in self.label_jumps.items():
+            try:
+                target = self.labels[label]
+            except KeyError:
+                # jump to non-existing label
+                raise SyntaxError(f"Invalid label target on line {positions[0] + 1}")
+            # replace offset placeholder with actual relative offset
+            for pos in positions:
+                assert compiled[pos][0] is _offset_placeholder
+                offset_op = partial(int, target - pos), 0
+                compiled[pos] = (offset_op, *compiled[pos][1:])
+
+        return compiled
 
     # register handling
-    def __getitem__(self, register, _b=_dustbin_map):
-        assert len(register) == 2
+
+    def compile_register_set(self, register=None):
+        """Return operations that sets the register to a value on the stack"""
+        if register is None:
+            register = self.next_token() + self.next_token()
         if register not in {"*.", "*+", ".*"}:
-            return self.registers.get(register, 0)
-        if register == "*.":
-            return self.memory[self["**"]]
-        elif register == "*+":
-            return self.stdin.read(1)
-        elif register == ".*":
-            # up to 32 bits, terminated by * or the end of the instruction
-            # integers are signed 32-bit values
+            return ((partial(operator.setitem, self.registers, register), 1),)
+        elif register == "*+":  # write to stdout
+            return ((partial(self.stdout.write), 1),)
+        elif register == "*.":  # memory access
+            # fetch the ** register first, then set the memory value with that result
+            rget = partial(self.registers.get, "**", 0), 0
+            mset = partial(operator.setitem, self.memory), 2
+            return rget, mset
+        # reserved for future use
+        raise SyntaxError(f"No such register: {register}, on line {self.pos + 1}")
+
+    def compile_register_get(self, register=None, _b=_dustbin_map):
+        """Return operations that produce the register value"""
+        if register is None:
+            register = self.next_token() + self.next_token()
+        if register not in {"*.", "*+", ".*"}:
+            return ((partial(self.registers.get, register, 0), 0),)
+        elif register == "*+":  # read from stdin
+            return ((partial(self.stdin.read, 1), 0),)
+        elif register == "*.":  # memory access
+            # fetch the ** register first, then fetch the memory value with that result
+            rget = partial(self.registers.get, "**", 0), 0
+            mget = partial(operator.getitem, self.memory), 1
+            return rget, mget
+        elif register == ".*":  # literal value
+            # consume the literal tokens
             bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 33)))
+            if len(bits) >= 33:
+                # too many bits
+                raise SyntaxError(f"Invalid number literal on line {self.pos + 1}")
             neg = len(bits) > 31 and bits[0] == "+"
-            return int(bits[-31:].translate(_b) or "0", 2) - (0x80000000 if neg else 0)
-
-    def __setitem__(self, register, value):
-        assert len(register) == 2
-        # masking unsigned integers is .. hard.
-        value = value & 0x7FFFFFFF if value >= 0 else -((-value - 1) & 0x7FFFFFFF) - 1
-        if register not in {"*.", "*+", ".*"}:
-            self.registers[register] = value
-            return
-        if register == "*.":
-            self.memory[self["**"]] = value
-        elif register == "*+":
-            self.stdout.write(value)
-
-    def expression(self):
-        return self[self.next_token() + self.next_token()]
-
-    def validate_register(self, toset=False):
-        register = self.next_token() + self.next_token()
-        if register == ".*":
-            if toset:
-                # reserved for future use
-                raise SyntaxError(f"No such register: .*, on line {self.pos + 1}")
-            else:
-                # consume the literal tokens
-                bits = "".join(takewhile(lambda t: t != "*", islice(self.tokens, 33)))
-                if len(bits) >= 33:
-                    # too many bits
-                    raise SyntaxError(f"Invalid number literal on line {self.pos + 1}")
-
-    def validate_expression(self):
-        self.validate_register()
+            value = int(bits[-31:].translate(_b) or "0", 2) - (0x80000000 if neg else 0)
+            return ((partial(int, value), 0),)
 
     # opcode implementation
 
@@ -279,33 +295,24 @@ class PixieDust:
         For a copy operation, Y should be omitted.
 
         """
-        register = self.next_token() + self.next_token()
-        x = self.expression()
-        self[register] = x
-
-    @op_math_copy.validator
-    def op_math_copy(self):
-        self.validate_register(True)
-        self.validate_expression()
+        register_set = self.compile_register_set()
+        x_get = self.compile_register_get()
+        return (*x_get, *register_set)
 
     @opcode("*+")
     def op_math_add_sub(self, _o={"+": operator.add, ".": operator.sub}):  # noqa B006
         """* O: ++ for addition, +. for subtraction"""
-        oper = _o[self.next_token()]
-        register = self.next_token() + self.next_token()
-        x = self.expression()
-        y = self.expression()
-        self[register] = oper(x, y)
-
-    @op_math_add_sub.validator
-    def op_math_add_sub(self):
-        oper = self.next_token()
-        if oper == "*":
+        try:
+            oper = _o[self.next_token()], 2
+        except KeyError as e:
             # *+* is reserved for future use.
-            raise SyntaxError(f"No such math operator: *+*, on line {self.pos + 1}")
-        self.validate_register(True)
-        self.validate_expression()
-        self.validate_expression()
+            raise SyntaxError(
+                f"No such math operator: *+{e.args[0]}, on line {self.pos + 1}"
+            )
+        register_set = self.compile_register_set()
+        x_get = self.compile_register_get()
+        y_get = self.compile_register_get()
+        return (*x_get, *y_get, oper, *register_set)
 
     @opcode("**")
     def op_math_mul_div_mod(
@@ -313,18 +320,12 @@ class PixieDust:
         _o={"*": operator.mul, ".": operator.floordiv, "+": operator.mod},  # noqa B006
     ):
         """* O: ** for multiplication, *. for division, *+ for modulo"""
-        oper = _o[self.next_token()]
-        register = self.next_token() + self.next_token()
-        x = self.expression()
-        y = self.expression()
-        self[register] = oper(x, y)
-
-    @op_math_mul_div_mod.validator
-    def op_math_mul_div_mod(self):
-        self.next_token()  # skip operator token
-        self.validate_register(True)
-        self.validate_expression()
-        self.validate_expression()
+        oper = _o[self.next_token()], 2
+        register_set = self.compile_register_set()
+        x_get = self.compile_register_get()
+        y_get = self.compile_register_get()
+        # put y on the stack first
+        return (*x_get, *y_get, oper, *register_set)
 
     @opcode(".")
     def op_comp(
@@ -337,42 +338,33 @@ class PixieDust:
         =<> are indicated by *+., respectively. X and Y are expressions.
 
         """
-        comp = _c[self.next_token()]
-        x = self.expression()
-        y = self.expression()
-        self[".."] = int(comp(x, y))
-
-    @op_comp.validator
-    def op_comp(self):
-        self.next_token()  # skip comparator token
-        self.validate_expression()
-        self.validate_expression()
+        comp = (_c[self.next_token()], 2), (int, 1)
+        x_get = self.expression()
+        y_get = self.expression()
+        register_set = self.compile_register_set("..")
+        return (*x_get, *y_get, comp, *register_set)
 
     @opcode("++")
     def op_print(self):
         """++ X prints the Unicode character represented by expression X to STDOUT."""
-        x = self.expression()
-        self.stdout.write(chr(x))
-
-    @op_print.validator
-    def op_print(self):
-        self.validate_expression()
+        x_get = self.compile_register_get()
+        to_character_op = chr, 1
+        print_op = partial(self.stdout.write), 1
+        return (*x_get, to_character_op, print_op)
 
     @opcode("+.")
     def op_set_label(self):
         """+. L defines a program label; L can be any number of characters."""
-        # Label is set in the pre-pass phase
-
-    @op_set_label.validator
-    def op_set_label(self):
-        """Set the label during pre-pass"""
         label = "".join(self.tokens)
+        if label in self.labels:
+            raise SyntaxError(
+                f"Re-definition of label {label!r} on line {self.pos + 1}"
+            )
         self.labels[label] = self.pos
+        return ()  # return noop to preserve instruction positions
 
     @opcode("+*")
-    def op_jump_label(
-        self, _t={"*": operator.truth, ".": operator.not_, "+": str}  # noqa B006
-    ):
+    def op_jump_label(self, _t={"*": operator.truth, ".": operator.not_}):  # noqa B006
         """+* T L jumps to label L based on the condition T.
 
         T can be
@@ -380,19 +372,30 @@ class PixieDust:
             . to jump if .. is 0, or
             + to jump regardless of the value in ...
         """
-        # evil grin: `str(0)` and `str(1)` are both true values.
-        # So for +*+ (unconditional jump, `if str(register value):` will always be true
-        test = _t[self.next_token()]
-        label = "".join(self.tokens)
-        if test(self[".."]):
-            self.pos = self.labels[label]
+        try:
+            test_op = _t[self.next_token()], 1
+        except KeyError:
+            # jump unconditional, no test and adjustment needed
+            test_ops = ()
+        else:
+            register_get = self.compile_register_get("..")
+            # Take the test output (True or False) and multiply this with the offset
+            # The result is either the offset, or 0
+            adjust_offset_ops = operator.mul, 2
+            test_ops = (*register_get, test_op, adjust_offset_ops)
 
-    @op_jump_label.validator
-    def op_jump_label(self):
-        """Validate the label exists during pre-pass"""
-        self.next_token()  # the test token
+        # register the target for the compiler to later on insert
+        # an offset into the operations
         label = "".join(self.tokens)
-        self.labels_used[label] = self.pos + 1
+        self.label_jumps.setdefault(label, []).append(self.pos)
+
+        # add the (updated) offset to self.pos
+        update_pos_op = (
+            (partial(getattr, self, "pos"), 0),
+            (operator.add, 2),
+            (partial(setattr, self, "pos"), 1),
+        )
+        return (_offset_placeholder, *test_ops, *update_pos_op)
 
 
 if __name__ == "__main__":
