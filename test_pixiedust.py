@@ -229,6 +229,64 @@ class PixieDustTests(unittest.TestCase):
             self.assertEqual(interpreter.memory[1], i)
             self.assertEqual(interpreter.memory[2], -0x80000000 + i)
 
+    def test_jump_unconditional(self):
+        interpreter = pixiedust.PixieDust()
+        interpreter.execute(
+            # set memory address 0 to 42
+            "*. *. .* +.+.+.\n"
+            # unconditial jump to *..*
+            "+* + *..*\n"
+            # set memory address 0 to 81
+            "*. *. .* +.+...+\n"
+            # set label *..*; code should jump here
+            "+. *..*\n"
+        )
+        self.assertEqual(interpreter.memory[0], 42)
+
+    def test_jump_nonzero(self):
+        interpreter = pixiedust.PixieDust()
+        interpreter.execute(
+            # set memory address 0 to 81
+            "*. *. .* +.+...+\n"
+            # set .. register to 0 (the default)
+            "*. .. .* .\n"
+            # if .. is 1, jump to *..*
+            "+* * *..*\n"
+            # set memory address 0 to 42
+            "*. *. .* +.+.+.\n"
+            # set .. register to 1
+            "*. .. .* +\n"
+            # if .. is 1, jump to *..*
+            "+* * *..*\n"
+            # set memory address 0 to 81
+            "*. *. .* +.+...+\n"
+            # set label *..*; code should jump here
+            "+. *..*\n"
+        )
+        self.assertEqual(interpreter.memory[0], 42)
+
+    def test_jump_zero(self):
+        interpreter = pixiedust.PixieDust()
+        interpreter.execute(
+            # set memory address 0 to 81
+            "*. *. .* +.+...+\n"
+            # set .. register to 1
+            "*. .. .* +\n"
+            # if .. is 0, jump to *..*
+            "+* . *..*\n"
+            # set memory address 0 to 42
+            "*. *. .* +.+.+.\n"
+            # set .. register to 0
+            "*. .. .* .\n"
+            # if .. is 0, jump to *..*
+            "+* . *..*\n"
+            # set memory address 0 to 81
+            "*. *. .* +.+...+\n"
+            # set label *..*; code should jump here
+            "+. *..*\n"
+        )
+        self.assertEqual(interpreter.memory[0], 42)
+
 
 class PixieDustSyntaxErrorTests(unittest.TestCase):
     def test_label_errors(self):

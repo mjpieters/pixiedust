@@ -384,7 +384,7 @@ class PixieDust:
         # So for +*+ (unconditional jump, `if str(register value):` will always be true
         test = _t[self.next_token()]
         label = "".join(self.tokens)
-        if test[self[".."]]:
+        if test(self[".."]):
             self.pos = self.labels[label]
 
     @op_jump_label.validator
