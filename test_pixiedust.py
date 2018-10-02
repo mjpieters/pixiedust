@@ -221,6 +221,13 @@ class PixieDustTests(unittest.TestCase):
             interpreter.execute("*. *+ .* +..+++..+.+...\n")
             self.assertEqual(out.getvalue(), "\u2728")
 
+    def test_input_unicode(self):
+        in_ = io.StringIO("\u2728")
+        interpreter = pixiedust.PixieDust(stdin=in_)
+        # copy byte from stdin to memory address 0
+        interpreter.execute("*. *. *+\n")
+        self.assertEqual(interpreter.memory[0], 0x2728)
+
     def test_jump_unconditional(self):
         interpreter = pixiedust.PixieDust()
         interpreter.execute(
@@ -316,6 +323,13 @@ class PixieDustTests(unittest.TestCase):
             # copy -1 literal into the *+ registry
             interpreter.execute("*. *+ .* ++++++++++++++++++++++++++++++++\n")
             self.assertEqual(out.getvalue(), "\uFFFF")
+
+        with self.subTest("read stdin"):
+            in_ = io.StringIO("\U0001F9DA")  # U+1F9DA FAIRY
+            interpreter = pixiedust.PixieDust(stdin=in_)
+            # copy stdin character into memory
+            interpreter.execute("*. *. *+\n")
+            self.assertEqual(interpreter.memory[0], 0xF9DA)
 
     def test_comp(self):
         interpreter = pixiedust.PixieDust()

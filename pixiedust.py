@@ -284,8 +284,13 @@ class PixieDust:
             register = self.next_token() + self.next_token()
         if register not in {"*.", "*+", ".*"}:
             return ((partial(self.registers.get, register, 0), 0),)
-        elif register == "*+":  # read from stdin
-            return ((partial(self.stdin.read, 1), 0),)
+        elif register == "*+":  # read a unicode character from stdin
+            # convert the character read to a 16-bit signed integer
+            return (
+                (partial(self.stdin.read, 1), 0),
+                (ord, 1),
+                (partial(operator.and_, 0xFFFF), 1),
+            )
         elif register == "*.":  # memory access
             # fetch the ** register first, then fetch the memory value with that result
             rget = partial(self.registers.get, "**", 0), 0
