@@ -247,8 +247,14 @@ class PixieDust:
             register = self.next_token() + self.next_token()
         if register not in {"*.", "*+", ".*"}:
             return ((partial(operator.setitem, self.registers, register), 1),)
-        elif register == "*+":  # write to stdout
-            return ((partial(self.stdout.write), 1),)
+        elif register == "*+":  # write value as Unicode char to stdout
+            # mask the integer value and convert to a unicode character first.
+            # this should be a Java (char) 16 bit range, not full Unicode
+            return (
+                (partial(operator.and_, 0xFFFF), 1),
+                (chr, 1),
+                (partial(self.stdout.write), 1),
+            )
         elif register == "*.":  # memory access
             # fetch the ** register first, then set the memory value with that result
             rget = partial(self.registers.get, "**", 0), 0
@@ -348,9 +354,9 @@ class PixieDust:
     def op_print(self):
         """++ X prints the Unicode character represented by expression X to STDOUT."""
         x_get = self.compile_register_get()
-        to_character_op = chr, 1
-        print_op = partial(self.stdout.write), 1
-        return (*x_get, to_character_op, print_op)
+        # mask to Java char range
+        print_ops = self.compile_register_set("*+")
+        return (*x_get, *print_ops)
 
     @opcode("+.")
     def op_set_label(self):

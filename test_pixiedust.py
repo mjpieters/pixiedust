@@ -206,6 +206,21 @@ class PixieDustTests(unittest.TestCase):
             self.assertEqual(interpreter.memory[1], i)
             self.assertEqual(interpreter.memory[2], -0x80000000 + i)
 
+    def test_output_unicode(self):
+        with self.subTest('print'):
+            out = io.StringIO()
+            interpreter = pixiedust.PixieDust(stdout=out)
+            # print U+2728 SPARKLES
+            interpreter.execute("++ .* +..+++..+.+...\n")
+            self.assertEqual(out.getvalue(), "\u2728")
+
+        with self.subTest(''):
+            out = io.StringIO()
+            interpreter = pixiedust.PixieDust(stdout=out)
+            # copy U+2728 SPARKLES to the *+ register
+            interpreter.execute("*. *+ .* +..+++..+.+...\n")
+            self.assertEqual(out.getvalue(), "\u2728")
+
     def test_jump_unconditional(self):
         interpreter = pixiedust.PixieDust()
         interpreter.execute(
