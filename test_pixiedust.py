@@ -207,14 +207,14 @@ class PixieDustTests(unittest.TestCase):
             self.assertEqual(interpreter.memory[2], -0x80000000 + i)
 
     def test_output_unicode(self):
-        with self.subTest('print'):
+        with self.subTest("print"):
             out = io.StringIO()
             interpreter = pixiedust.PixieDust(stdout=out)
             # print U+2728 SPARKLES
             interpreter.execute("++ .* +..+++..+.+...\n")
             self.assertEqual(out.getvalue(), "\u2728")
 
-        with self.subTest('*+ register'):
+        with self.subTest("*+ register"):
             out = io.StringIO()
             interpreter = pixiedust.PixieDust(stdout=out)
             # copy U+2728 SPARKLES to the *+ register
@@ -300,17 +300,17 @@ class PixieDustTests(unittest.TestCase):
     def test_overflow(self):
         interpreter = pixiedust.PixieDust()
 
-        with self.subTest('memory set'):
+        with self.subTest("memory set"):
             # 0x7FFFFFFF + 1
             interpreter.execute("*++ *. .* .+++++++++++++++++++++++++++++++* .* +\n")
             self.assertEqual(interpreter.memory[0], -0x80000000)
 
-        with self.subTest('register set'):
+        with self.subTest("register set"):
             # 0x7FFFFFFF + 1
             interpreter.execute("*++ .+ .* .+++++++++++++++++++++++++++++++* .* +\n")
-            self.assertEqual(interpreter.registers.get('.+'), -0x80000000)
+            self.assertEqual(interpreter.registers.get(".+"), -0x80000000)
 
-        with self.subTest('write stdout'):
+        with self.subTest("write stdout"):
             out = io.StringIO()
             interpreter = pixiedust.PixieDust(stdout=out)
             # copy -1 literal into the *+ registry
