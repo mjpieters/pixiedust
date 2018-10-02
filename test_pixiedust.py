@@ -297,6 +297,26 @@ class PixieDustTests(unittest.TestCase):
                 interpreter.execute(dust)
                 self.assertEqual(interpreter.memory[0], 42)
 
+    def test_overflow(self):
+        interpreter = pixiedust.PixieDust()
+
+        with self.subTest('memory set'):
+            # 0x7FFFFFFF + 1
+            interpreter.execute("*++ *. .* .+++++++++++++++++++++++++++++++* .* +\n")
+            self.assertEqual(interpreter.memory[0], -0x80000000)
+
+        with self.subTest('register set'):
+            # 0x7FFFFFFF + 1
+            interpreter.execute("*++ .+ .* .+++++++++++++++++++++++++++++++* .* +\n")
+            self.assertEqual(interpreter.registers.get('.+'), -0x80000000)
+
+        with self.subTest('write stdout'):
+            out = io.StringIO()
+            interpreter = pixiedust.PixieDust(stdout=out)
+            # copy -1 literal into the *+ registry
+            interpreter.execute("*. *+ .* ++++++++++++++++++++++++++++++++\n")
+            self.assertEqual(out.getvalue(), "\uFFFF")
+
     def test_comp(self):
         interpreter = pixiedust.PixieDust()
 

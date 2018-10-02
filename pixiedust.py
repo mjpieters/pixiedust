@@ -8,6 +8,7 @@ import itertools
 import operator
 import re
 import sqlite3
+import struct
 import sys
 
 from functools import partial
@@ -152,12 +153,12 @@ class SQLiteMemory:
                 )
 
     def __setitem__(self, address, value):
-        address = abs(address) & 0x7FFFFFFF
+        address = address & 0x7FFFFFFF
         pagenum, subaddress = address // self._page_size, address % self._page_size
         self._get_page(pagenum)[subaddress] = value
 
     def __getitem__(self, address):
-        address = abs(address) & 0x7FFFFFFF
+        address = address & 0x7FFFFFFF
         pagenum, subaddress = address // self._page_size, address % self._page_size
         return self._get_page(pagenum).get(subaddress, 0)
 
@@ -172,6 +173,17 @@ def _offset_missing():
 
 
 _offset_placeholder = _offset_missing, 0
+
+
+# handle casting signed integers by packing into to 8 long long bytes, then
+# slicing back target size. with 8 bytes we can handle any overflow scenario.
+# You can't use masking as that casts to an unsigned int instead.
+signed32bit = (
+    (partial(struct.pack, "!q"), 1),
+    (operator.itemgetter(slice(-4, None)), 1),
+    (partial(struct.unpack, "!l"), 1),
+    (operator.itemgetter(0), 1),
+)
 
 
 class PixieDust:
@@ -246,8 +258,11 @@ class PixieDust:
         if register is None:
             register = self.next_token() + self.next_token()
         if register not in {"*.", "*+", ".*"}:
-            return ((partial(operator.setitem, self.registers, register), 1),)
-        elif register == "*+":  # write value as Unicode char to stdout
+            return (
+                *signed32bit,
+                (partial(operator.setitem, self.registers, register), 1),
+            )
+        elif register == "*+":  # value as Unicode char to stdout
             # mask the integer value and convert to a unicode character first.
             # this should be a Java (char) 16 bit range, not full Unicode
             return (
@@ -259,7 +274,7 @@ class PixieDust:
             # fetch the ** register first, then set the memory value with that result
             rget = partial(self.registers.get, "**", 0), 0
             mset = partial(operator.setitem, self.memory), 2
-            return rget, mset
+            return (*signed32bit, rget, mset)
         # reserved for future use
         raise SyntaxError(f"No such register: {register}, on line {self.pos + 1}")
 
