@@ -163,17 +163,15 @@ class SQLiteMemory:
         return self._get_page(pagenum).get(subaddress, 0)
 
 
-# mapping pixiedust characters to bits for the .* literal syntax
-_dustbin_map = str.maketrans(".+", "01")
-# label offset dummy
-
-
 def _offset_missing():
     raise RuntimeError("Missing label offset identity callable")
 
 
+# label offset dummy
 _offset_placeholder = _offset_missing, 0
 
+# mapping pixiedust characters to bits for the .* literal syntax
+_dustbin_map = str.maketrans(".+", "01")
 
 # handle casting signed integers by packing into to 8 long long bytes, then
 # slicing back target size. with 8 bytes we can handle any overflow scenario.
