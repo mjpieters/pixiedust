@@ -214,7 +214,7 @@ class PixieDustTests(unittest.TestCase):
             interpreter.execute("++ .* +..+++..+.+...\n")
             self.assertEqual(out.getvalue(), "\u2728")
 
-        with self.subTest(''):
+        with self.subTest('*+ register'):
             out = io.StringIO()
             interpreter = pixiedust.PixieDust(stdout=out)
             # copy U+2728 SPARKLES to the *+ register
