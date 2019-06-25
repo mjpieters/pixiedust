@@ -22,19 +22,15 @@ tokenizer = re.compile(r"[*+.]").findall
 class opcode:
     """Descriptor / decorator for operator methods"""
 
-    def __init__(self, tokens, fget=None, fvalidator=None):
+    def __init__(self, tokens, fget=None):
         self.tokens = tokens
         self.fget = fget
-        self.fvalidator = fvalidator
 
     def __set_name__(self, owner, name):
         owner.opcodes[self.tokens] = self.fget
 
     def __call__(self, fget):
-        return type(self)(self.tokens, fget, self.fvalidator)
-
-    def validator(self, fvalidator):
-        return type(self)(self.tokens, self.fget, fvalidator)
+        return type(self)(self.tokens, fget)
 
     def __get__(self, instance, owner):
         if instance is None:
